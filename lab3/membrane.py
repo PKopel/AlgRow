@@ -1,14 +1,12 @@
-#!/usr/bin/env python
-
-import mpi4py
+#!/usr/bin/env python3
 
 from mpi4py import MPI
-
-import math
 
 import sys
 
 import numpy as np
+
+import matplotlib.pyplot as plt
 
 comm = MPI.COMM_WORLD
 
@@ -20,7 +18,7 @@ a = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 p = int(sys.argv[2]) if len(sys.argv) > 2 else 10
 T = int(sys.argv[3]) if len(sys.argv) > 3 else 10
 
-h_shape = (a+1, a+1)
+h_shape = (a, a)
 h_size = np.prod(h_shape)
 item_size = MPI.DOUBLE.Get_size()
 
@@ -31,6 +29,7 @@ h_buf, alloc_item_size = h_win.Shared_query(0)
 assert alloc_item_size == item_size
 
 h_ary = np.ndarray(buffer=h_buf, dtype='d', shape=h_shape)
+h_ary.fill(0)
 
 
 def next_h(h, x: int, y: int):
@@ -38,19 +37,32 @@ def next_h(h, x: int, y: int):
 
 
 def next_col(h, x: int):
-    for y in range(1, a):
+    for y in range(1, a-1):
         if x != 1:
-            comm.Recv(source=rank-1, tag=y)
+            source = (size+rank-1) % size
+            comm.Recv(np.zeros(1), source=source, tag=y)
+            # MPI.Request.Wait(req)
         next_h(h, x, y)
-        if rank + 1 != size:
-            comm.Ibsend(y, dest=rank+1, tag=y+1)
+        if x + 1 != a:
+            dest = (rank+1) % size
+            comm.Isend(np.zeros(1), dest=dest, tag=y)
 
 
 def next_iter(h):
     col = rank+1
-    while col < a:
+    while col < a-1:
         next_col(h, col)
         col += size
 
 
 comm.Barrier()
+
+for i in range(1000):
+    next_iter(h_ary)
+    comm.Barrier()
+
+if rank == 0:
+    scale = 400//a
+    upscale = np.ones((scale, scale))
+    plt.imsave(f'./result.png', np.kron(h_ary, upscale), cmap='hot')
+    np.savetxt("result.csv", h_ary, delimiter=",", fmt='%10.5f')
