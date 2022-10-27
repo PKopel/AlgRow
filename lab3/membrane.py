@@ -29,7 +29,8 @@ h_buf, alloc_item_size = h_win.Shared_query(0)
 assert alloc_item_size == item_size
 
 h_ary = np.ndarray(buffer=h_buf, dtype='d', shape=h_shape)
-h_ary.fill(0)
+if rank == 0:
+    h_ary.fill(0)
 
 
 def next_h(h, x: int, y: int):
@@ -41,7 +42,6 @@ def next_col(h, x: int):
         if x != 1:
             source = (size+rank-1) % size
             comm.Recv(np.zeros(1), source=source, tag=y)
-            # MPI.Request.Wait(req)
         next_h(h, x, y)
         if x + 1 != a:
             dest = (rank+1) % size
@@ -56,13 +56,17 @@ def next_iter(h):
 
 
 comm.Barrier()
+start = MPI.Wtime()
 
 for i in range(1000):
     next_iter(h_ary)
     comm.Barrier()
+    
+end = MPI.Wtime()
 
 if rank == 0:
     scale = 400//a
     upscale = np.ones((scale, scale))
     plt.imsave(f'./result.png', np.kron(h_ary, upscale), cmap='hot')
     np.savetxt("result.csv", h_ary, delimiter=",", fmt='%10.5f')
+    print(f'{a},{p},{T},{end-start}')
