@@ -6,6 +6,7 @@ use std::io::Write;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread::{self, available_parallelism};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Parser, Debug, Clone, Copy)]
 #[command(author, version, about, long_about = None)]
@@ -20,6 +21,8 @@ struct Args {
     p: f64,
     #[arg(short = 'T', default_value_t = 10.0)]
     T: f64,
+    #[arg(short, long)]
+    save: bool,
 }
 
 struct Task {
@@ -56,6 +59,10 @@ fn main() {
     }
     receivers.rotate_left(1);
 
+    let start = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
     for i in 0..args.threads {
         let task = Task {
             id: i + 1,
@@ -72,17 +79,26 @@ fn main() {
         handle.join().unwrap();
     }
 
-    let result = arc_array
-        .iter()
-        .map(|rw| rw.read().unwrap().to_vec())
-        .collect::<Vec<Vec<f64>>>();
+    let end = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
 
-    show_results(result);
+    println!("{}", end - start);
+
+    if args.save {
+        let result = arc_array
+            .iter()
+            .map(|rw| rw.read().unwrap().to_vec())
+            .collect::<Vec<Vec<f64>>>();
+
+        show_results(result);
+    }
 }
 
 fn compute_column(task: Task, args: Args) {
-    let mut x = task.id;
     for _ in 0..args.iterations {
+        let mut x = task.id;
         while x < args.a - 1 {
             for y in 1..args.a - 1 {
                 let left = if x != 1 {
