@@ -4,7 +4,7 @@ use std::cmp;
 use std::fs::File;
 use std::io::Write;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, available_parallelism};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -31,13 +31,13 @@ struct Task {
     rxl: Receiver<f64>,
     txr: Sender<f64>,
     rxr: Receiver<f64>,
-    array: Arc<Vec<RwLock<Vec<f64>>>>,
+    array: Arc<Vec<Mutex<Vec<f64>>>>,
 }
 
 fn main() {
     let mut args = Args::parse();
 
-    let mut array: Vec<RwLock<Vec<f64>>> = vec![];
+    let mut array: Vec<Mutex<Vec<f64>>> = vec![];
     let mut handles = vec![];
     let mut senders_l: Vec<Sender<f64>> = vec![];
     let mut receivers_l: Vec<Receiver<f64>> = vec![];
@@ -52,7 +52,7 @@ fn main() {
 
     for _ in 0..args.a {
         let col: Vec<f64> = vec![0f64; args.a];
-        array.push(RwLock::new(col));
+        array.push(Mutex::new(col));
     }
     let arc_array = Arc::new(array);
 
@@ -99,7 +99,7 @@ fn main() {
     if args.save {
         let result = arc_array
             .iter()
-            .map(|rw| rw.read().unwrap().to_vec())
+            .map(|mx| mx.lock().unwrap().to_vec())
             .collect::<Vec<Vec<f64>>>();
 
         show_results(result);
@@ -121,7 +121,7 @@ fn compute_column(task: Task, args: Args) {
                 } else {
                     0f64
                 };
-                let mut col = task.array[x].write().unwrap();
+                let mut col = task.array[x].lock().unwrap();
                 col[y] = (args.p / args.T + col[y - 1] + left + col[y + 1] + right) / 4.0;
                 if x != args.a - 2 {
                     task.txl.send(col[y]).unwrap();
