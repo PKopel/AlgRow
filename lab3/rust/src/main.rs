@@ -27,8 +27,10 @@ struct Args {
 
 struct Task {
     id: usize,
-    tx: Sender<f64>,
-    rx: Receiver<f64>,
+    txl: Sender<f64>,
+    rxl: Receiver<f64>,
+    txr: Sender<f64>,
+    rxr: Receiver<f64>,
     array: Arc<Vec<RwLock<Vec<f64>>>>,
 }
 
@@ -37,8 +39,10 @@ fn main() {
 
     let mut array: Vec<RwLock<Vec<f64>>> = vec![];
     let mut handles = vec![];
-    let mut senders: Vec<Sender<f64>> = vec![];
-    let mut receivers: Vec<Receiver<f64>> = vec![];
+    let mut senders_l: Vec<Sender<f64>> = vec![];
+    let mut receivers_l: Vec<Receiver<f64>> = vec![];
+    let mut senders_r: Vec<Sender<f64>> = vec![];
+    let mut receivers_r: Vec<Receiver<f64>> = vec![];
 
     args.threads = if args.threads > 0 {
         cmp::min(args.threads, args.a - 2)
@@ -53,11 +57,15 @@ fn main() {
     let arc_array = Arc::new(array);
 
     for _ in 0..args.threads {
-        let (tx, rx): (Sender<f64>, Receiver<f64>) = mpsc::channel();
-        senders.push(tx);
-        receivers.push(rx);
+        let (tx_l, rx_l): (Sender<f64>, Receiver<f64>) = mpsc::channel();
+        let (tx_r, rx_r): (Sender<f64>, Receiver<f64>) = mpsc::channel();
+        senders_l.push(tx_l);
+        receivers_l.push(rx_l);
+        senders_r.push(tx_r);
+        receivers_r.push(rx_r);
     }
-    receivers.rotate_left(1);
+    receivers_l.rotate_left(1);
+    receivers_r.rotate_right(1);
 
     let start = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -67,8 +75,10 @@ fn main() {
         let task = Task {
             id: i + 1,
             array: Arc::clone(&arc_array),
-            tx: senders.pop().unwrap(),
-            rx: receivers.pop().unwrap(),
+            txl: senders_l.pop().unwrap(),
+            rxl: receivers_l.pop().unwrap(),
+            txr: senders_r.pop().unwrap(),
+            rxr: receivers_r.pop().unwrap(),
         };
 
         let handle = thread::spawn(move || compute_column(task, args));
@@ -97,20 +107,29 @@ fn main() {
 }
 
 fn compute_column(task: Task, args: Args) {
-    for _ in 0..args.iterations {
+    for i in 0..args.iterations {
         let mut x = task.id;
         while x < args.a - 1 {
             for y in 1..args.a - 1 {
                 let left = if x != 1 {
-                    task.rx.recv().unwrap()
+                    task.rxl.recv().unwrap()
+                } else {
+                    0f64
+                };
+                let right = if i != 0 && x != args.a - 2 {
+                    task.rxr.recv().unwrap()
                 } else {
                     0f64
                 };
                 let mut col = task.array[x].write().unwrap();
-                let next_col = task.array[x + 1].read().unwrap();
-                col[y] = (args.p / args.T + col[y - 1] + left + col[y + 1] + next_col[y]) / 4.0;
+                col[y] = (args.p / args.T + col[y - 1] + left + col[y + 1] + right) / 4.0;
                 if x != args.a - 2 {
-                    task.tx.send(col[y]).unwrap();
+                    task.txl.send(col[y]).unwrap();
+                }
+                if x != 1 {
+                    match task.txr.send(col[y]) {
+                        _ => continue,
+                    };
                 }
             }
             x += args.threads;
