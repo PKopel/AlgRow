@@ -4,7 +4,6 @@ use std::cmp;
 use std::fs::File;
 use std::io::Write;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
 use std::thread::{self, available_parallelism};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -31,34 +30,36 @@ struct Task {
     rxl: Receiver<f64>,
     txr: Sender<f64>,
     rxr: Receiver<f64>,
-    array: Arc<Vec<Mutex<Vec<f64>>>>,
+    result_t: Sender<Result>,
+}
+
+struct Result {
+    id: usize,
+    values: Vec<Vec<f64>>,
 }
 
 fn main() {
     let mut args = Args::parse();
 
-    let mut array: Vec<Mutex<Vec<f64>>> = vec![];
-    let mut handles = vec![];
+    args.threads = cmp::min(
+        if args.threads > 0 {
+            args.threads
+        } else {
+            available_parallelism().unwrap().get()
+        },
+        args.a - 2,
+    );
+
+    let mut array: Vec<Vec<f64>> = vec![vec![]; args.a];
     let mut senders_l: Vec<Sender<f64>> = vec![];
     let mut receivers_l: Vec<Receiver<f64>> = vec![];
     let mut senders_r: Vec<Sender<f64>> = vec![];
     let mut receivers_r: Vec<Receiver<f64>> = vec![];
-
-    args.threads = if args.threads > 0 {
-        cmp::min(args.threads, args.a - 2)
-    } else {
-        available_parallelism().unwrap().get()
-    };
-
-    for _ in 0..args.a {
-        let col: Vec<f64> = vec![0f64; args.a];
-        array.push(Mutex::new(col));
-    }
-    let arc_array = Arc::new(array);
+    let (results_t, results_r) = mpsc::channel();
 
     for _ in 0..args.threads {
-        let (tx_l, rx_l): (Sender<f64>, Receiver<f64>) = mpsc::channel();
-        let (tx_r, rx_r): (Sender<f64>, Receiver<f64>) = mpsc::channel();
+        let (tx_l, rx_l) = mpsc::channel();
+        let (tx_r, rx_r) = mpsc::channel();
         senders_l.push(tx_l);
         receivers_l.push(rx_l);
         senders_r.push(tx_r);
@@ -67,28 +68,37 @@ fn main() {
     receivers_l.rotate_left(1);
     receivers_r.rotate_right(1);
 
+    // start measuring time
     let start = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis();
+
     for i in 0..args.threads {
         let task = Task {
             id: i + 1,
-            array: Arc::clone(&arc_array),
             txl: senders_l.pop().unwrap(),
             rxl: receivers_l.pop().unwrap(),
             txr: senders_r.pop().unwrap(),
             rxr: receivers_r.pop().unwrap(),
+            result_t: results_t.clone(),
         };
 
-        let handle = thread::spawn(move || compute_column(task, args));
-        handles.push(handle);
+        thread::spawn(move || compute_column(task, args));
     }
+    drop(results_t);
 
-    for handle in handles {
-        handle.join().unwrap();
+    for result in results_r {
+        let mut x = result.id;
+        for col in result.values {
+            array[x] = col;
+            x += args.threads;
+        }
     }
+    array[0] = vec![0f64; args.a];
+    array[args.a - 1] = vec![0f64; args.a];
 
+    // end measuring time
     let end = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -97,44 +107,51 @@ fn main() {
     println!("{}", end - start);
 
     if args.save {
-        let result = arc_array
-            .iter()
-            .map(|mx| mx.lock().unwrap().to_vec())
-            .collect::<Vec<Vec<f64>>>();
-
-        show_results(result);
+        show_results(array);
     }
 }
 
 fn compute_column(task: Task, args: Args) {
+    let n_cols = div_ceil(args.a - 1 - task.id, args.threads);
+    let mut array: Vec<Vec<f64>> = vec![vec![0f64; args.a]; n_cols];
+
     for i in 0..args.iterations {
-        let mut x = task.id;
-        while x < args.a - 1 {
+        for x in 0..n_cols {
+            let not_first = !(x == 0 && task.id == 1);
+            let not_last = !(task.id + args.threads * x == args.a - 2);
             for y in 1..args.a - 1 {
-                let left = if x != 1 {
+                let left = if not_first {
                     task.rxl.recv().unwrap()
                 } else {
                     0f64
                 };
-                let right = if i != 0 && x != args.a - 2 {
+                let right = if i != 0 && not_last {
                     task.rxr.recv().unwrap()
                 } else {
                     0f64
                 };
-                let mut col = task.array[x].lock().unwrap();
-                col[y] = (args.p / args.T + col[y - 1] + left + col[y + 1] + right) / 4.0;
-                if x != args.a - 2 {
-                    task.txl.send(col[y]).unwrap();
+
+                array[x][y] =
+                    (args.p / args.T + array[x][y - 1] + left + array[x][y + 1] + right) / 4.0;
+
+                if not_last {
+                    task.txl.send(array[x][y]).unwrap();
                 }
-                if x != 1 {
-                    match task.txr.send(col[y]) {
+                if not_first {
+                    match task.txr.send(array[x][y]) {
                         _ => continue,
                     };
                 }
             }
-            x += args.threads;
         }
     }
+
+    task.result_t
+        .send(Result {
+            id: task.id,
+            values: array,
+        })
+        .unwrap();
 }
 
 fn show_results(values: Vec<Vec<f64>>) {
@@ -147,4 +164,8 @@ fn show_results(values: Vec<Vec<f64>>) {
     // let mut plot = Plot::new();
     // plot.add_trace(trace);
     // plot.save("./result.png", ImageFormat::PNG, 400, 400, 1.0);
+}
+
+fn div_ceil(a: usize, b: usize) -> usize {
+    return a / b + usize::from(a % b != 0);
 }
