@@ -1,11 +1,22 @@
 use clap::Parser;
 //use plotly::{ImageFormat, Plot};
+use lockfree::channel::{spsc, RecvErr};
 use std::cmp;
 use std::fs::File;
 use std::io::Write;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc;
 use std::thread::{self, available_parallelism};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+fn receive<T>(rx: &mut spsc::Receiver<T>) -> std::result::Result<T, RecvErr> {
+    loop {
+        match rx.recv() {
+            Err(RecvErr::NoMessage) => continue,
+            Err(err) => return Err(err),
+            Ok(msg) => return Ok(msg),
+        }
+    }
+}
 
 #[derive(Parser, Debug, Clone, Copy)]
 #[command(author, version, about, long_about = None)]
@@ -26,11 +37,11 @@ struct Args {
 
 struct Task {
     id: usize,
-    txl: Sender<f64>,
-    rxl: Receiver<f64>,
-    txr: Sender<f64>,
-    rxr: Receiver<f64>,
-    result_t: Sender<Result>,
+    txl: spsc::Sender<f64>,
+    rxl: spsc::Receiver<f64>,
+    txr: spsc::Sender<f64>,
+    rxr: spsc::Receiver<f64>,
+    result_t: mpsc::Sender<Result>,
 }
 
 struct Result {
@@ -51,15 +62,15 @@ fn main() {
     );
 
     let mut array: Vec<Vec<f64>> = vec![vec![]; args.a];
-    let mut senders_l: Vec<Sender<f64>> = vec![];
-    let mut receivers_l: Vec<Receiver<f64>> = vec![];
-    let mut senders_r: Vec<Sender<f64>> = vec![];
-    let mut receivers_r: Vec<Receiver<f64>> = vec![];
+    let mut senders_l = vec![];
+    let mut receivers_l = vec![];
+    let mut senders_r = vec![];
+    let mut receivers_r = vec![];
     let (results_t, results_r) = mpsc::channel();
 
     for _ in 0..args.threads {
-        let (tx_l, rx_l) = mpsc::channel();
-        let (tx_r, rx_r) = mpsc::channel();
+        let (tx_l, rx_l) = spsc::create();
+        let (tx_r, rx_r) = spsc::create();
         senders_l.push(tx_l);
         receivers_l.push(rx_l);
         senders_r.push(tx_r);
@@ -111,7 +122,7 @@ fn main() {
     }
 }
 
-fn compute_column(task: Task, args: Args) {
+fn compute_column(mut task: Task, args: Args) {
     let n_cols = div_ceil(args.a - 1 - task.id, args.threads);
     let mut array: Vec<Vec<f64>> = vec![vec![0f64; args.a]; n_cols];
 
@@ -121,12 +132,12 @@ fn compute_column(task: Task, args: Args) {
             let not_last = !(task.id + args.threads * x == args.a - 2);
             for y in 1..args.a - 1 {
                 let left = if not_first {
-                    task.rxl.recv().unwrap()
+                    receive(&mut task.rxl).unwrap()
                 } else {
                     0f64
                 };
                 let right = if i != 0 && not_last {
-                    task.rxr.recv().unwrap()
+                    receive(&mut task.rxr).unwrap()
                 } else {
                     0f64
                 };
