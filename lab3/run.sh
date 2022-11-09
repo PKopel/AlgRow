@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 ## Nazwa zlecenia
 #SBATCH -J MPI-algrow-task4
 ## Liczba alokowanych węzłów
@@ -10,7 +10,7 @@
 ## Maksymalny czas trwania zlecenia (format HH:MM:SS)
 #SBATCH --time=01:00:00 
 ## Nazwa grantu do rozliczenia zużycia zasobów
-#SBATCH -A plgar2022
+#SBATCH -A plgar2022-cpu
 ## Specyfikacja partycji
 #SBATCH -p plgrid
 ## Plik ze standardowym wyjściem
@@ -18,20 +18,20 @@
 ## Plik ze standardowym wyjściem błędów
 #SBATCH --error="error.err"
 
-srun /bin/hostname
+# srun /bin/hostname
 
 ## Zaladowanie modulu IntelMPI w wersji domyslnej
-module load scipy-bundle/2021.10-intel-2021b
+# module load scipy-bundle/2021.10-intel-2021b
 
 ## przejscie do katalogu z ktorego wywolany zostal sbatch
-cd $SLURM_SUBMIT_DIR
+# cd $SLURM_SUBMIT_DIR
 
-echo "a,p,T,threads,time" > times.csv
+# echo "a,p,T,threads,time" > times.csv
 
-for i in {1..12}; do
+for i in {1..10}; do
     for s in 100 200; do
         for _ in {1..10}; do
-            mpiexec -n $i ./membrane.py $s > times.csv
+            mpiexec -n $i ./membrane.py $s >> times_local.csv
         done
     done
 done

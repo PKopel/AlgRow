@@ -84,8 +84,8 @@ comm.Barrier()
 end = MPI.Wtime()
 
 if rank == 0:
-    scale = 400//a
-    upscale = np.ones((scale, scale))
-    plt.imsave(f'./result.png', np.kron(h_ary, upscale), cmap='hot')
-    np.savetxt("result.csv", h_ary, delimiter=",", fmt='%10.5f')
+    # scale = 400//a
+    # upscale = np.ones((scale, scale))
+    # plt.imsave(f'./result.png', np.kron(h_ary, upscale), cmap='hot')
+    # np.savetxt("result.csv", h_ary, delimiter=",", fmt='%10.5f')
     print(f'{a},{p},{T},{size},{end-start}')
