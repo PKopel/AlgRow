@@ -1,5 +1,8 @@
 from mpi4py import MPI
 from mpi4py.futures import MPIPoolExecutor
+import numpy as np
+
+fft = True
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -35,6 +38,10 @@ def julia_line(k):
 
     start = MPI.Wtime()
 
+    if fft and k == 4:
+        arr = np.random.rand(10000, 4000)
+        np.fft.fft2(arr)
+
     line = bytearray(w)
 
     y = y1 - k * dy
@@ -47,13 +54,12 @@ def julia_line(k):
 
     end = MPI.Wtime()
 
-    print(f'{k},{rank},{end-start}')
+    print(f'{k},{fft},{rank},{end-start}')
 
     return line
 
 
 if __name__ == '__main__':
-
 
     with MPIPoolExecutor() as executor:
 

@@ -1,4 +1,6 @@
 **/results*
+**/profile*
 **/target
 **/membrane
 *.csv
+*.pgm
