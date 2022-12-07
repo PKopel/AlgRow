@@ -30,7 +30,7 @@ echo "N,d,threads,time" > times.csv
 
 for _ in {1..5}; do
     for i in {1..12}; do
-        mpiexec -n $i -m mpi4py.futures salesman.py 14 2 >> times.csv
-        mpiexec -n $i -m mpi4py.futures salesman.py 14 5 >> times.csv
+        mpiexec -n $i python -m mpi4py.futures salesman.py 14 2 >> times.csv
+        mpiexec -n $i python -m mpi4py.futures salesman.py 14 5 >> times.csv
     done
 done

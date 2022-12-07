@@ -29,6 +29,6 @@ cd $SLURM_SUBMIT_DIR
 echo "line,fft,rank,time" > times.csv
 
 for _ in {1..10}; do
-    mpiexec -n 12 -m mpi4py.futures julia.py >> times.csv
-    mpiexec -n 12 -m mpi4py.futures julia_m.py >> times.csv
+    mpiexec -n 12 python -m mpi4py.futures julia.py >> times.csv
+    mpiexec -n 12 python -m mpi4py.futures julia_m.py >> times.csv
 done
