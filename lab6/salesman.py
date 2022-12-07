@@ -7,6 +7,7 @@ from math import pi, cos, sin, sqrt
 from random import random
 
 comm = MPI.COMM_WORLD
+size = comm.Get_size()
 rank = comm.Get_rank()
 
 maxsize = float('inf')
@@ -17,11 +18,7 @@ def point(r):
     return cos(theta) * r, sin(theta) * r
 
 
-# Function to find the minimum edge cost
-# having an end at the vertex i
-
-
-def firstMin(adj, i):
+def first_min(adj, i):
     N = adj.shape[0]
     min = maxsize
     for k in range(N):
@@ -30,11 +27,8 @@ def firstMin(adj, i):
 
     return min
 
-# function to find the second minimum edge
-# cost having an end at the vertex i
 
-
-def secondMin(adj, i):
+def second_min(adj, i):
     N = adj.shape[0]
     first, second = maxsize, maxsize
     for j in range(N):
@@ -50,14 +44,6 @@ def secondMin(adj, i):
 
     return second
 
-# function that takes as arguments:
-# curr_bound -> lower bound of the root node
-# curr_weight-> stores the weight of the path so far
-# level-> current level while moving
-# in the search space tree
-# curr_path[] -> where the solution is being stored
-# which would later be copied to final_path[]
-
 
 def TSP_rec(args):
 
@@ -65,63 +51,37 @@ def TSP_rec(args):
     N = adj.shape[0]
     final_path = None
 
-    # base case is when we have reached level N
-    # which means we have covered all the nodes once
     if level == N:
 
-        # check if there is an edge from
-        # last vertex in path back to the first vertex
         if adj[curr_path[level - 1]][curr_path[0]] != 0:
 
-            # curr_res has the total weight
-            # of the solution we got
             curr_res = curr_weight + adj[curr_path[level - 1]][curr_path[0]]
             if curr_res < final_res:
                 return curr_path, curr_res
         return None, None
 
-    # for any other level iterate for all vertices
-    # to build the search space tree recursively
     for i in range(N):
 
-        # Consider next vertex if it is not same
-        # (diagonal entry in adjacency matrix and
-        # not visited already)
         if (adj[curr_path[level-1]][i] != 0 and
                 visited[i] == False):
             temp = curr_bound
             curr_weight += adj[curr_path[level - 1]][i]
+            curr_bound -= ((second_min(adj, curr_path[level - 1]) +
+                            first_min(adj, i)) / 2)
 
-            # different computation of curr_bound
-            # for level 2 from the other levels
-            if level == 1:
-                curr_bound -= ((firstMin(adj, curr_path[level - 1]) +
-                                firstMin(adj, i)) / 2)
-            else:
-                curr_bound -= ((secondMin(adj, curr_path[level - 1]) +
-                                firstMin(adj, i)) / 2)
-
-            # curr_bound + curr_weight is the actual lower bound
-            # for the node that we have arrived on.
-            # If current lower bound < final_res,
-            # we need to explore the node further
             if curr_bound + curr_weight < final_res:
                 curr_path[level] = i
                 visited[i] = True
 
-                # call TSPRec for the next level
                 final_path_candidate, final_res_candidate = TSP_rec((adj, curr_bound, curr_weight,
                                                                      level + 1, curr_path, visited, final_res))
                 if final_res_candidate is not None:
                     final_res = final_res_candidate
                     final_path = final_path_candidate
 
-            # Else we have to prune the node by resetting
-            # all changes to curr_weight and curr_bound
             curr_weight -= adj[curr_path[level - 1]][i]
             curr_bound = temp
 
-            # Also reset the visited array
             visited = [False] * len(visited)
             for j in range(level):
                 if curr_path[j] != -1:
@@ -152,23 +112,18 @@ def path_weigth(adj, path):
 
 def path_bound(adj, path, initial_bound):
     for i in range(len(path)-1):
-        initial_bound -= ((secondMin(adj,
-                          path[i]) + firstMin(adj, path[i+1])) / 2)
+        initial_bound -= ((second_min(adj,
+                          path[i]) + first_min(adj, path[i+1])) / 2)
     return initial_bound
 
 
 def TSP_init(N, d, adj):
-
-    # Calculate initial lower bound for the root node
-    # using the formula 1/2 * (sum of first min +
-    # second min) for all edges. Also initialize the
-    # curr_path and visited array
     curr_bound = 0
     visited = [False] * N
 
     # Compute initial bound
     for i in range(N):
-        curr_bound += (firstMin(adj, i) + secondMin(adj, i))
+        curr_bound += (first_min(adj, i) + second_min(adj, i))
 
     # Compute initial paths
     visited[0] = True
@@ -206,6 +161,8 @@ if __name__ == '__main__':
 
         args = TSP_init(N, d, adj)
 
+        print(f'init done, {len(args)}')
+
         results = executor.map(TSP_rec, args)
 
         min_res = maxsize
@@ -219,4 +176,4 @@ if __name__ == '__main__':
 
     end = MPI.Wtime()
 
-    print(end - start)
+    print(f'{N},{d},{size},{end - start}')
