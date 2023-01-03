@@ -127,4 +127,4 @@ if rank == 0:
     # for sublist in results:
     #     for item in sublist:
     #         print(json.dumps(item.__dict__))
-    print(f'{p},{N},{end-start}')
+    print(f'symetric,{p},{N},{end-start}')
