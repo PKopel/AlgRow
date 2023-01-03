@@ -83,6 +83,9 @@ class Star:
         return f'{self.M} {self.x} {self.y} {self.z} {self.a_x:.4f} {self.a_y:.4f} {self.a_z:.4f}'
 
 
+comm.Barrier()
+start = MPI.Wtime()
+
 stars_file = sys.argv[1] if len(sys.argv) > 1 else 'stars.json'
 with open(stars_file, 'r') as file:
     stars_list = file.readlines()
@@ -116,7 +119,12 @@ if p != 1:  # and iterations + 1 != p:
     stars = [s+b for s, b in zip(stars, buff)]
 
 results = comm.gather(stars, root=0)
+
+comm.Barrier()
+end = MPI.Wtime()
+
 if rank == 0:
-    for sublist in results:
-        for item in sublist:
-            print(json.dumps(item.__dict__))
+    # for sublist in results:
+    #     for item in sublist:
+    #         print(json.dumps(item.__dict__))
+    print(f'{p},{N},{end-start}')
