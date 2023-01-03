@@ -31,22 +31,22 @@ def next_h(h, x: int, y: int):
 # wavefront
 
 
-# def wavefront(h, x: int):
-#     for y in range(1, a-1):
-#         if x != 1:
-#             source = (size+rank-1) % size
-#             comm.Recv(np.zeros(1), source=source, tag=y)
-#         next_h(h, x, y)
-#         if x + 1 != a:
-#             dest = (rank+1) % size
-#             comm.Isend(np.zeros(1), dest=dest, tag=y)
+def wavefront(h, x: int):
+    for y in range(1, a-1):
+        if x != 1:
+            source = (size+rank-1) % size
+            comm.Recv(np.zeros(1), source=source, tag=y)
+        next_h(h, x, y)
+        if x + 1 != a:
+            dest = (rank+1) % size
+            comm.Isend(np.zeros(1), dest=dest, tag=y)
 
 
-# def next_iter_wavefront(h):
-#     col = rank+1
-#     while col < a-1:
-#         wavefront(h, col)
-#         col += size
+def next_iter_wavefront(h):
+    col = rank+1
+    while col < a-1:
+        wavefront(h, col)
+        col += size
 
 
 # coloring
@@ -78,14 +78,15 @@ h_ary = np.ndarray(buffer=h_buf, dtype='d', shape=h_shape)
 h_ary.fill(0)
 
 for i in range(1000):
-    next_iter_coloring(h_ary)
+    next_iter_wavefront(h_ary)
+    # next_iter_coloring(h_ary)
 
 comm.Barrier()
 end = MPI.Wtime()
 
 if rank == 0:
-    # scale = 400//a
-    # upscale = np.ones((scale, scale))
-    # plt.imsave(f'./result.png', np.kron(h_ary, upscale), cmap='hot')
-    # np.savetxt("result.csv", h_ary, delimiter=",", fmt='%10.5f')
+    scale = 400//a
+    upscale = np.ones((scale, scale))
+    plt.imsave(f'./result.png', np.kron(h_ary, upscale), cmap='hot')
+    np.savetxt("result.csv", h_ary, delimiter=",", fmt='%10.5f')
     print(f'{a},{p},{T},{size},{end-start}')
